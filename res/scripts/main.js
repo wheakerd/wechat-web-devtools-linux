@@ -3,7 +3,7 @@
     try {
       const { webContents } = require('electron')
       const { mainController } = require('skyline-addon/build/main-client.node')
-      mainController.connect('127.0.0.1', 3002)
+      await mainController.connect('127.0.0.1', 3002)
       console.info('webContents', mainController.electron.webContents)
       {
         const fromId = webContents.fromId
