@@ -242,6 +242,25 @@ module_packages=(
 if has_https_proxy; then
   module_packages+=(global-agent@3.0.0)
 fi
+
+# ── @swc/core Linux 原生绑定 ──────────────
+# @swc/core 依赖平台相关的 napi 预编译原生模块，打包内自带的是
+# Windows 版 (core-win32-x64-msvc)，Linux 下缺少对应 .node 会报
+# "Failed to load native binding" 并白屏。该绑定是预编译产物，
+# 复用下方公共安装逻辑按架构拉取对应版本即可，无需本地编译。
+# 参考: https://github.com/msojocs/wechat-web-devtools-linux/issues/197
+swc_core_dir="${package_dir}/node_modules/@swc/core"
+case "$arch" in
+  x64)   swc_triple="linux-x64-gnu" ;;
+  arm64) swc_triple="linux-arm64-gnu" ;;
+  *)     swc_triple="" ;;
+esac
+if [ -n "$swc_triple" ] && [ -d "$swc_core_dir" ]; then
+  swc_version=$(node -p "require('${swc_core_dir}/package.json').version")
+  module_packages+=("@swc/core-${swc_triple}@${swc_version}")
+else
+  notice "跳过 @swc/core 原生绑定：$arch 无官方预编译版本或未安装 @swc/core"
+fi
 (
   cd "${package_dir}/node_modules_tmp"
   npm install \
@@ -296,6 +315,15 @@ find . -name "*.lib" -delete
 find . -name "*..mk" -delete
 
 # ── 将 .node 文件回写到 Electron 应用目录 ───────
+# @swc/core 的 swc.<triple>.node 安装在 @swc/core-<triple>/ 下，需单独提取到
+# @swc/core/ 才能被 binding.js 加载。提取后删除整包，避免下方通用回写因目标
+# 目录 @swc/core-<triple>/ 不存在而报错。
+if [ -n "$swc_triple" ]; then
+  swc_pkg_dir="${package_dir}/node_modules_tmp/node_modules/@swc/core-${swc_triple}"
+  swc_node_src="${swc_pkg_dir}/swc.${swc_triple}.node"
+  [ -f "$swc_node_src" ] && cp -a "$swc_node_src" "${package_dir}/node_modules/@swc/core/swc.${swc_triple}.node"
+  rm -fr "$swc_pkg_dir"
+fi
 notice "copy node files"
 find . -name "*.node" | xargs -I{} cp -rf {} "${package_dir}/node_modules/{}"
 
